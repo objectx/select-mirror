@@ -48,7 +48,7 @@ fn main() {
         let timeout = args.timeout;
         thread::spawn(move || {
             let elapsed = probe(&mirror, &probe_path, timeout);
-            tx.send((mirror, elapsed)).unwrap();
+            let _ = tx.send((mirror, elapsed));
         });
     }
     drop(tx);
