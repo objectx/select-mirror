@@ -2,7 +2,7 @@
 
 ## Overview
 
-A Rust reimplementation of `select-mirror.sh` that probes a list of Ubuntu mirror
+A Rust reimplementation of `reference/select-mirror.sh` that probes a list of Ubuntu mirror
 servers in parallel and prints the fastest one to stdout.
 
 ## CLI Interface
