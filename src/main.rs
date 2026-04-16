@@ -1,3 +1,21 @@
+use clap::Parser;
+
+#[derive(Parser)]
+#[command(about = "Select the fastest Ubuntu mirror")]
+struct Args {
+    /// One or more mirror base URLs to probe
+    #[arg(required = true)]
+    mirrors: Vec<String>,
+
+    /// Path appended to each mirror URL for probing
+    #[arg(long, default_value = "/ubuntu/dists/noble/Release")]
+    probe_path: String,
+
+    /// Request timeout in seconds
+    #[arg(long, default_value_t = 3u64)]
+    timeout: u64,
+}
+
 fn find_best(results: &[(String, Option<f64>)]) -> Option<&str> {
     results
         .iter()
@@ -6,7 +24,9 @@ fn find_best(results: &[(String, Option<f64>)]) -> Option<&str> {
         .map(|(mirror, _)| mirror)
 }
 
-fn main() {}
+fn main() {
+    let _args = Args::parse();
+}
 
 #[cfg(test)]
 mod tests {
