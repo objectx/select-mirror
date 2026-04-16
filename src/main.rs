@@ -1,4 +1,7 @@
 use clap::Parser;
+use std::sync::mpsc;
+use std::thread;
+use std::time::Instant;
 
 #[derive(Parser)]
 #[command(about = "Select the fastest Ubuntu mirror")]
@@ -16,6 +19,16 @@ struct Args {
     timeout: u64,
 }
 
+fn probe(mirror: &str, probe_path: &str, timeout_secs: u64) -> Option<f64> {
+    let url = format!("{}{}", mirror, probe_path);
+    let start = Instant::now();
+    ureq::get(&url)
+        .timeout(std::time::Duration::from_secs(timeout_secs))
+        .call()
+        .ok()
+        .map(|_| start.elapsed().as_secs_f64())
+}
+
 fn find_best(results: &[(String, Option<f64>)]) -> Option<&str> {
     results
         .iter()
@@ -25,7 +38,37 @@ fn find_best(results: &[(String, Option<f64>)]) -> Option<&str> {
 }
 
 fn main() {
-    let _args = Args::parse();
+    let args = Args::parse();
+    let (tx, rx) = mpsc::channel();
+
+    for mirror in &args.mirrors {
+        let tx = tx.clone();
+        let mirror = mirror.clone();
+        let probe_path = args.probe_path.clone();
+        let timeout = args.timeout;
+        thread::spawn(move || {
+            let elapsed = probe(&mirror, &probe_path, timeout);
+            tx.send((mirror, elapsed)).unwrap();
+        });
+    }
+    drop(tx);
+
+    let mut results: Vec<(String, Option<f64>)> = Vec::new();
+    for (mirror, elapsed) in rx {
+        let label = elapsed
+            .map(|e| format!("{:.3}s", e))
+            .unwrap_or_else(|| "failed".to_string());
+        eprintln!("  {}: {}", mirror, label);
+        results.push((mirror, elapsed));
+    }
+
+    match find_best(&results) {
+        Some(best) => println!("{}", best),
+        None => {
+            eprintln!("Error: all mirrors failed or timed out");
+            std::process::exit(1);
+        }
+    }
 }
 
 #[cfg(test)]
