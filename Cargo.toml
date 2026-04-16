@@ -1,0 +1,15 @@
+[package]
+name = "select-mirror"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "select-mirror"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+ureq = "2"
+
+[dev-dependencies]
+assert_cmd = "2"
