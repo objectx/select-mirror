@@ -22,8 +22,8 @@ struct Args {
     #[arg(long, default_value_t = 500u64)]
     fast_threshold: u64,
 
-    /// Stop after this many mirrors respond within --fast-threshold
-    #[arg(long, default_value_t = 3usize)]
+    /// Stop after this many mirrors respond within --fast-threshold (must be >= 1)
+    #[arg(long, default_value_t = 3usize, value_parser = parse_fast_count)]
     fast_count: usize,
 }
 
@@ -43,6 +43,15 @@ fn find_best(results: &[(String, Option<f64>)]) -> Option<&str> {
         .filter_map(|(mirror, elapsed)| elapsed.map(|t| (mirror.as_str(), t)))
         .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
         .map(|(mirror, _)| mirror)
+}
+
+fn parse_fast_count(s: &str) -> Result<usize, String> {
+    let n: usize = s.parse().map_err(|_| format!("'{}' is not a valid integer", s))?;
+    if n == 0 {
+        Err("--fast-count must be >= 1".to_string())
+    } else {
+        Ok(n)
+    }
 }
 
 fn main() {
@@ -71,7 +80,7 @@ fn main() {
             .unwrap_or_else(|| "failed".to_string());
         eprintln!("  {}: {}", mirror, label);
         results.push((mirror, elapsed));
-        if elapsed.map_or(false, |e| e < threshold_secs) {
+        if elapsed.is_some_and(|e| e < threshold_secs) {
             fast_count_seen += 1;
             if fast_count_seen >= args.fast_count {
                 break;
