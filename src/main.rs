@@ -134,4 +134,24 @@ mod tests {
         let results: Vec<(String, Option<f64>)> = vec![];
         assert_eq!(find_best(&results), None);
     }
+
+    #[test]
+    fn parse_fast_count_rejects_zero() {
+        assert!(parse_fast_count("0").is_err());
+    }
+
+    #[test]
+    fn parse_fast_count_rejects_non_integer() {
+        assert!(parse_fast_count("abc").is_err());
+    }
+
+    #[test]
+    fn parse_fast_count_accepts_one() {
+        assert_eq!(parse_fast_count("1").unwrap(), 1);
+    }
+
+    #[test]
+    fn parse_fast_count_accepts_valid_count() {
+        assert_eq!(parse_fast_count("3").unwrap(), 3);
+    }
 }

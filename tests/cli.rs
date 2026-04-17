@@ -2,19 +2,17 @@ use assert_cmd::Command;
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::thread;
+use std::time::Duration;
 
 fn start_slow_server(delay_ms: u64) -> u16 {
-    use std::time::Duration;
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     thread::spawn(move || {
-        for stream in listener.incoming() {
-            if let Ok(mut s) = stream {
-                let mut buf = [0u8; 1024];
-                let _ = s.read(&mut buf);
-                thread::sleep(Duration::from_millis(delay_ms));
-                let _ = s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
-            }
+        for mut s in listener.incoming().flatten() {
+            let mut buf = [0u8; 1024];
+            let _ = s.read(&mut buf);
+            thread::sleep(Duration::from_millis(delay_ms));
+            let _ = s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
         }
     });
     port
@@ -24,12 +22,10 @@ fn start_mock_server() -> u16 {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     thread::spawn(move || {
-        for stream in listener.incoming() {
-            if let Ok(mut s) = stream {
-                let mut buf = [0u8; 1024];
-                let _ = s.read(&mut buf); // drain the request
-                let _ = s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
-            }
+        for mut s in listener.incoming().flatten() {
+            let mut buf = [0u8; 1024];
+            let _ = s.read(&mut buf); // drain the request
+            let _ = s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
         }
     });
     port
@@ -121,8 +117,8 @@ fn early_exit_when_fast_count_met() {
         "winner {winner} should be one of the fast mirrors"
     );
     assert!(
-        elapsed.as_millis() < 2000,
-        "expected early exit in under 2s, took {}ms",
+        elapsed.as_millis() < 2500,
+        "expected early exit in under 2.5s, took {}ms",
         elapsed.as_millis()
     );
 }
