@@ -77,3 +77,54 @@ fn fastest_of_two_mirrors_wins() {
         "unexpected winner: {winner}"
     );
 }
+
+#[test]
+fn early_exit_when_fast_count_met() {
+    let ports: Vec<u16> = (0..5).map(|_| start_mock_server()).collect();
+    let mirrors: Vec<String> = ports
+        .iter()
+        .map(|p| format!("http://127.0.0.1:{}", p))
+        .collect();
+
+    let output = Command::cargo_bin("select-mirror")
+        .unwrap()
+        .args(&mirrors)
+        .args(["--probe-path", "/"])
+        .args(["--fast-count", "2"])
+        .args(["--fast-threshold", "500"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "expected exit 0");
+    let winner = String::from_utf8(output.stdout).unwrap();
+    let winner = winner.trim();
+    assert!(
+        mirrors.iter().any(|m| m == winner),
+        "winner {winner} not in mirror list"
+    );
+}
+
+#[test]
+fn fast_count_exceeds_mirror_count_still_succeeds() {
+    let port_a = start_mock_server();
+    let port_b = start_mock_server();
+    let mirror_a = format!("http://127.0.0.1:{}", port_a);
+    let mirror_b = format!("http://127.0.0.1:{}", port_b);
+
+    let output = Command::cargo_bin("select-mirror")
+        .unwrap()
+        .args([&mirror_a, &mirror_b])
+        .args(["--probe-path", "/"])
+        .args(["--fast-count", "10"])
+        .args(["--fast-threshold", "500"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "expected exit 0");
+    let winner = String::from_utf8(output.stdout).unwrap();
+    let winner = winner.trim();
+    assert!(
+        winner == mirror_a || winner == mirror_b,
+        "unexpected winner: {winner}"
+    );
+}

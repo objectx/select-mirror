@@ -17,6 +17,14 @@ struct Args {
     /// Request timeout in seconds
     #[arg(long, default_value_t = 3u64)]
     timeout: u64,
+
+    /// Response-time threshold in milliseconds to qualify as "fast" (e.g. 500 = 0.5 s)
+    #[arg(long, default_value_t = 500u64)]
+    fast_threshold: u64,
+
+    /// Stop after this many mirrors respond within --fast-threshold
+    #[arg(long, default_value_t = 3usize)]
+    fast_count: usize,
 }
 
 fn probe(mirror: &str, probe_path: &str, timeout_secs: u64) -> Option<f64> {
@@ -53,13 +61,22 @@ fn main() {
     }
     drop(tx);
 
+    let threshold_secs = args.fast_threshold as f64 / 1000.0;
+    let mut fast_count_seen: usize = 0;
     let mut results: Vec<(String, Option<f64>)> = Vec::new();
+
     for (mirror, elapsed) in rx {
         let label = elapsed
             .map(|e| format!("{:.3}s", e))
             .unwrap_or_else(|| "failed".to_string());
         eprintln!("  {}: {}", mirror, label);
         results.push((mirror, elapsed));
+        if elapsed.map_or(false, |e| e < threshold_secs) {
+            fast_count_seen += 1;
+            if fast_count_seen >= args.fast_count {
+                break;
+            }
+        }
     }
 
     match find_best(&results) {
