@@ -3,6 +3,8 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Instant;
 
+const CACHE_VERSION: u32 = 1;
+
 #[derive(serde::Serialize, serde::Deserialize)]
 struct CacheEntry {
     version: u32,
@@ -12,27 +14,42 @@ struct CacheEntry {
     recorded_at: u64,
 }
 
+impl CacheEntry {
+    fn new(mirror: &str, elapsed_ms: u64, probe_path: &str) -> Self {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        Self {
+            version: CACHE_VERSION,
+            mirror: mirror.to_string(),
+            elapsed_ms,
+            probe_path: probe_path.to_string(),
+            recorded_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+        }
+    }
+}
+
 fn load_cache(path: &str) -> Option<CacheEntry> {
     let content = std::fs::read_to_string(path).ok()?;
-    let entry: CacheEntry = serde_json::from_str(&content).ok()?;
-    if entry.version != 1 {
+    let entry: CacheEntry = match serde_json::from_str(&content) {
+        Ok(e) => e,
+        Err(_) => {
+            eprintln!("warning: cache file is malformed, ignoring");
+            return None;
+        }
+    };
+    if entry.version != CACHE_VERSION {
+        eprintln!(
+            "warning: cache file has unsupported version {}, ignoring",
+            entry.version
+        );
         return None;
     }
     Some(entry)
 }
 
-fn save_cache(path: &str, mirror: &str, elapsed_ms: u64, probe_path: &str) {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let entry = CacheEntry {
-        version: 1,
-        mirror: mirror.to_string(),
-        elapsed_ms,
-        probe_path: probe_path.to_string(),
-        recorded_at: SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs(),
-    };
+fn save_cache(path: &str, entry: &CacheEntry) {
     let json = match serde_json::to_string_pretty(&entry) {
         Ok(j) => j,
         Err(e) => {
@@ -230,14 +247,27 @@ mod tests {
 
     #[test]
     fn save_cache_and_load_cache_round_trip() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let before = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
         let dir = tempfile::TempDir::new().unwrap();
         let path = dir.path().join("cache.json").to_str().unwrap().to_string();
-        save_cache(&path, "http://example.com", 250, "/probe");
-        let entry = load_cache(&path).expect("should load saved cache");
-        assert_eq!(entry.mirror, "http://example.com");
-        assert_eq!(entry.elapsed_ms, 250);
-        assert_eq!(entry.probe_path, "/probe");
-        assert_eq!(entry.version, 1);
+        let entry_in = CacheEntry {
+            version: CACHE_VERSION,
+            mirror: "http://example.com".to_string(),
+            elapsed_ms: 250,
+            probe_path: "/probe".to_string(),
+            recorded_at: before,
+        };
+        save_cache(&path, &entry_in);
+        let entry_out = load_cache(&path).expect("should load saved cache");
+        assert_eq!(entry_out.mirror, "http://example.com");
+        assert_eq!(entry_out.elapsed_ms, 250);
+        assert_eq!(entry_out.probe_path, "/probe");
+        assert_eq!(entry_out.version, CACHE_VERSION);
+        assert_eq!(entry_out.recorded_at, before);
     }
 
     #[test]
@@ -250,7 +280,14 @@ mod tests {
             .to_str()
             .unwrap()
             .to_string();
+        let entry = CacheEntry {
+            version: CACHE_VERSION,
+            mirror: "http://example.com".to_string(),
+            elapsed_ms: 100,
+            probe_path: "/".to_string(),
+            recorded_at: 0,
+        };
         // must not panic
-        save_cache(&path, "http://example.com", 100, "/");
+        save_cache(&path, &entry);
     }
 }
