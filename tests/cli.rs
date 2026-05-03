@@ -209,6 +209,11 @@ fn cache_hit_uses_cached_mirror() {
         .assert()
         .success();
 
+    let before = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
     // Second run: should get a cache hit
     let output = Command::cargo_bin("select-mirror")
         .unwrap()
@@ -228,6 +233,14 @@ fn cache_hit_uses_cached_mirror() {
     assert!(
         stderr.contains("(cached)"),
         "expected '(cached)' in stderr on second run, got: {stderr}"
+    );
+    // Verify the cache file was refreshed (recorded_at updated)
+    let cache_content = std::fs::read_to_string(&cf).unwrap();
+    let entry: serde_json::Value = serde_json::from_str(&cache_content)
+        .expect("cache file should be valid JSON after cache hit");
+    assert!(
+        entry["recorded_at"].as_u64().unwrap_or(0) >= before,
+        "cache hit should update recorded_at, got: {cache_content}"
     );
 }
 
@@ -543,4 +556,46 @@ fn cache_write_failure_is_non_fatal() {
         String::from_utf8(output.stdout).unwrap().trim(),
         mirror.as_str()
     );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("warning"),
+        "expected a write-failure warning in stderr, got: {stderr}"
+    );
+}
+
+#[test]
+fn concurrent_cache_writes_produce_valid_json() {
+    let port = start_mock_server();
+    let mirror = format!("http://127.0.0.1:{}", port);
+    let dir = TempDir::new().unwrap();
+    let cf = cache_file(&dir);
+
+    // Spawn 4 select-mirror processes against the same cache file simultaneously
+    let handles: Vec<_> = (0..4)
+        .map(|_| {
+            let mirror = mirror.clone();
+            let cf = cf.clone();
+            std::thread::spawn(move || {
+                std::process::Command::new(
+                    assert_cmd::cargo::cargo_bin("select-mirror"),
+                )
+                .args([&mirror])
+                .args(["--probe-path", "/"])
+                .args(["--cache-file", &cf])
+                .output()
+                .expect("select-mirror should run")
+            })
+        })
+        .collect();
+
+    for handle in handles {
+        let output = handle.join().expect("thread should not panic");
+        assert!(output.status.success(), "each invocation should succeed");
+    }
+
+    // Cache file must exist and be valid JSON after concurrent writes
+    assert!(std::path::Path::new(&cf).exists(), "cache file should exist");
+    let content = std::fs::read_to_string(&cf).unwrap();
+    let _: serde_json::Value =
+        serde_json::from_str(&content).expect("cache file should be valid JSON after concurrent writes");
 }

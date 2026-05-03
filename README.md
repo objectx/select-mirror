@@ -56,7 +56,7 @@ On each successful run the tool writes the chosen mirror to `.selected-mirror.js
 
 This makes consecutive invocations return the same mirror as long as the network is stable — useful when the output drives a Docker `apt` mirror layer that you do not want to rebuild unnecessarily.
 
-Use `--no-cache` to force a fresh probe while still updating the cache for the next run. Use `--cache-file /dev/null` to disable caching entirely.
+Use `--no-cache` to force a fresh probe while still updating the cache for the next run.
 
 ## Build
 
