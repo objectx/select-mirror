@@ -3,6 +3,54 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Instant;
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CacheEntry {
+    version: u32,
+    mirror: String,
+    elapsed_ms: u64,
+    probe_path: String,
+    recorded_at: u64,
+}
+
+fn load_cache(path: &str) -> Option<CacheEntry> {
+    let content = std::fs::read_to_string(path).ok()?;
+    let entry: CacheEntry = serde_json::from_str(&content).ok()?;
+    if entry.version != 1 {
+        return None;
+    }
+    Some(entry)
+}
+
+fn save_cache(path: &str, mirror: &str, elapsed_ms: u64, probe_path: &str) {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let entry = CacheEntry {
+        version: 1,
+        mirror: mirror.to_string(),
+        elapsed_ms,
+        probe_path: probe_path.to_string(),
+        recorded_at: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+    };
+    let json = match serde_json::to_string_pretty(&entry) {
+        Ok(j) => j,
+        Err(e) => {
+            eprintln!("warning: failed to serialize cache: {}", e);
+            return;
+        }
+    };
+    let tmp_path = format!("{}.tmp.{}", path, std::process::id());
+    if let Err(e) = std::fs::write(&tmp_path, json.as_bytes()) {
+        eprintln!("warning: failed to write cache: {}", e);
+        return;
+    }
+    if let Err(e) = std::fs::rename(&tmp_path, path) {
+        eprintln!("warning: failed to finalize cache: {}", e);
+        let _ = std::fs::remove_file(&tmp_path);
+    }
+}
+
 #[derive(Parser)]
 #[command(about = "Select the fastest Ubuntu mirror")]
 struct Args {
@@ -153,5 +201,56 @@ mod tests {
     #[test]
     fn parse_fast_count_accepts_valid_count() {
         assert_eq!(parse_fast_count("3").unwrap(), 3);
+    }
+
+    #[test]
+    fn load_cache_returns_none_for_missing_file() {
+        assert!(load_cache("/nonexistent/path/select-mirror-test-cache.json").is_none());
+    }
+
+    #[test]
+    fn load_cache_returns_none_for_malformed_json() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("bad.json").to_str().unwrap().to_string();
+        std::fs::write(&path, b"not json {{{{").unwrap();
+        assert!(load_cache(&path).is_none());
+    }
+
+    #[test]
+    fn load_cache_returns_none_for_unknown_version() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("v99.json").to_str().unwrap().to_string();
+        std::fs::write(
+            &path,
+            br#"{"version":99,"mirror":"http://x.com","elapsed_ms":100,"probe_path":"/","recorded_at":0}"#,
+        )
+        .unwrap();
+        assert!(load_cache(&path).is_none());
+    }
+
+    #[test]
+    fn save_cache_and_load_cache_round_trip() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("cache.json").to_str().unwrap().to_string();
+        save_cache(&path, "http://example.com", 250, "/probe");
+        let entry = load_cache(&path).expect("should load saved cache");
+        assert_eq!(entry.mirror, "http://example.com");
+        assert_eq!(entry.elapsed_ms, 250);
+        assert_eq!(entry.probe_path, "/probe");
+        assert_eq!(entry.version, 1);
+    }
+
+    #[test]
+    fn save_cache_is_non_fatal_for_unwritable_path() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir
+            .path()
+            .join("nonexistent-subdir")
+            .join("cache.json")
+            .to_str()
+            .unwrap()
+            .to_string();
+        // must not panic
+        save_cache(&path, "http://example.com", 100, "/");
     }
 }
