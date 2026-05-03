@@ -215,6 +215,7 @@ fn cache_hit_uses_cached_mirror() {
         .args([&mirror])
         .args(["--probe-path", "/"])
         .args(["--cache-file", &cf])
+        .args(["--fast-threshold", "5000"])
         .output()
         .unwrap();
 
@@ -325,6 +326,10 @@ fn cache_miss_for_malformed_json() {
         !stderr.contains("(cached)"),
         "expected no cache hit for malformed JSON, got: {stderr}"
     );
+    assert!(
+        stderr.contains("malformed"),
+        "expected 'malformed' warning in stderr for bad cache file, got: {stderr}"
+    );
 }
 
 #[test]
@@ -357,6 +362,10 @@ fn cache_miss_for_unknown_version() {
     assert!(
         !stderr.contains("(cached)"),
         "expected no cache hit for unknown version, got: {stderr}"
+    );
+    assert!(
+        stderr.contains("unsupported version"),
+        "expected 'unsupported version' warning in stderr, got: {stderr}"
     );
 }
 
@@ -405,6 +414,51 @@ fn cache_miss_when_cached_probe_is_slow() {
 }
 
 #[test]
+fn cache_miss_when_cached_mirror_unreachable() {
+    let port = start_mock_server();
+    let live_mirror = format!("http://127.0.0.1:{}", port);
+    let dead_mirror = "http://127.0.0.1:1".to_string(); // guaranteed-closed port
+    let dir = TempDir::new().unwrap();
+    let cf = cache_file(&dir);
+
+    // Seed cache pointing to the dead mirror
+    std::fs::write(
+        &cf,
+        format!(
+            r#"{{"version":1,"mirror":"{}","elapsed_ms":10,"probe_path":"/","recorded_at":0}}"#,
+            dead_mirror
+        )
+        .as_bytes(),
+    )
+    .unwrap();
+
+    let output = Command::cargo_bin("select-mirror")
+        .unwrap()
+        .args([&dead_mirror, &live_mirror])
+        .args(["--probe-path", "/"])
+        .args(["--timeout", "1"])
+        .args(["--cache-file", &cf])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap().trim(),
+        live_mirror.as_str(),
+        "live mirror should win after dead cached mirror falls through"
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("unreachable"),
+        "expected 'unreachable' in stderr when cached mirror is unreachable, got: {stderr}"
+    );
+    assert!(
+        !stderr.contains("(cached)"),
+        "expected no cache hit for unreachable mirror, got: {stderr}"
+    );
+}
+
+#[test]
 fn no_cache_flag_skips_read_but_still_writes() {
     let port = start_mock_server();
     let mirror = format!("http://127.0.0.1:{}", port);
@@ -421,6 +475,12 @@ fn no_cache_flag_skips_read_but_still_writes() {
         .as_bytes(),
     )
     .unwrap();
+
+    // Record time before the run so we can verify recorded_at was refreshed
+    let before = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
 
     let output = Command::cargo_bin("select-mirror")
         .unwrap()
@@ -442,11 +502,13 @@ fn no_cache_flag_skips_read_but_still_writes() {
         "expected no cache hit with --no-cache, got: {stderr}"
     );
 
-    // Cache file should still contain the winner (was written by probe-all path)
+    // Cache file should have been rewritten with a fresh recorded_at (not the seeded 0)
     let cache_content = std::fs::read_to_string(&cf).unwrap();
+    let entry: serde_json::Value = serde_json::from_str(&cache_content)
+        .expect("cache file should be valid JSON after --no-cache run");
     assert!(
-        cache_content.contains(&mirror),
-        "cache file should be updated even under --no-cache, got: {cache_content}"
+        entry["recorded_at"].as_u64().unwrap_or(0) >= before,
+        "cache file should have a fresh recorded_at after --no-cache run, got: {cache_content}"
     );
 }
 
