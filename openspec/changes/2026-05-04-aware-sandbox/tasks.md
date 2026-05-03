@@ -14,5 +14,5 @@
 - [x] **Milestone 4: Sandbox verification**
   Confirm end-to-end behaviour by running `select-mirror` from inside a Claude Code-sandboxed consumer (`local-ubuntu`). Verified working.
 
-- [ ] **Milestone 5: Documentation**
+- [x] **Milestone 5: Documentation**
   Update `README.md` to document `*_PROXY` / `NO_PROXY` support and the sandbox-friendly behaviour. Update `CLAUDE.md`'s architecture summary to mention `build_agent`, `proxy_from_env`, and `host_matches_no_proxy`. Note the consumer-side `allowLocalBinding` requirement for running tests under a sandbox in `findings-about-claude-sandboxing.md`.
