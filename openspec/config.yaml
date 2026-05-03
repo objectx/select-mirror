@@ -1,0 +1,13 @@
+schema: superpowers-sdd
+
+context: |
+  Tech stack: C++, LLVM, CMake, Just, NuShell
+  Build system: CMake
+  Languages: C++, Go, Rust, C#
+  Testing: Catch2
+  We use conventional commits
+  Domain: Utility for manipulating C++ object from other language.
+rules:
+  tasks:
+    - "Milestones only — no file paths, no code, no verification steps"
+    - "Superpowers writing-plans handles granular task breakdown"
