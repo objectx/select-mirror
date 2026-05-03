@@ -90,6 +90,14 @@ struct Args {
     /// Stop after this many mirrors respond within --fast-threshold (must be >= 1)
     #[arg(long, default_value_t = 3usize, value_parser = parse_fast_count)]
     fast_count: usize,
+
+    /// Path to the cache file for persisting the selected mirror
+    #[arg(long, default_value = ".selected-mirror.json")]
+    cache_file: String,
+
+    /// Skip reading the cache and re-probe all mirrors (still writes the result)
+    #[arg(long)]
+    no_cache: bool,
 }
 
 fn probe(mirror: &str, probe_path: &str, timeout_secs: u64) -> Option<f64> {
@@ -121,8 +129,29 @@ fn parse_fast_count(s: &str) -> Result<usize, String> {
 
 fn main() {
     let args = Args::parse();
-    let (tx, rx) = mpsc::channel();
 
+    // Cache-hit short-circuit
+    if !args.no_cache {
+        if let Some(entry) = load_cache(&args.cache_file) {
+            if entry.probe_path == args.probe_path && args.mirrors.contains(&entry.mirror) {
+                if let Some(e) = probe(&entry.mirror, &args.probe_path, args.timeout) {
+                    let threshold_secs = args.fast_threshold as f64 / 1000.0;
+                    if e < threshold_secs {
+                        eprintln!("  {}: {:.3}s (cached)", entry.mirror, e);
+                        save_cache(
+                            &args.cache_file,
+                            &CacheEntry::new(&entry.mirror, (e * 1000.0) as u64, &args.probe_path),
+                        );
+                        println!("{}", entry.mirror);
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    // Probe-all flow (unchanged)
+    let (tx, rx) = mpsc::channel();
     for mirror in &args.mirrors {
         let tx = tx.clone();
         let mirror = mirror.clone();
@@ -154,7 +183,16 @@ fn main() {
     }
 
     match find_best(&results) {
-        Some(best) => println!("{}", best),
+        Some(best) => {
+            let elapsed_ms = results
+                .iter()
+                .find(|(m, _)| m.as_str() == best)
+                .and_then(|(_, e)| *e)
+                .map(|e| (e * 1000.0) as u64)
+                .unwrap_or(0);
+            save_cache(&args.cache_file, &CacheEntry::new(best, elapsed_ms, &args.probe_path));
+            println!("{}", best);
+        }
         None => {
             eprintln!("Error: all mirrors failed or timed out");
             std::process::exit(1);
