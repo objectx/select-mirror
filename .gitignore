@@ -1,3 +1,4 @@
 /target
 .worktrees/
+graphify-out/
 .selected-mirror.json
