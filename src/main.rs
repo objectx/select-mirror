@@ -1,7 +1,7 @@
 use clap::Parser;
 use std::sync::mpsc;
 use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 const CACHE_VERSION: u32 = 1;
 
@@ -102,12 +102,79 @@ struct Args {
 
 fn probe(mirror: &str, probe_path: &str, timeout_secs: u64) -> Option<f64> {
     let url = format!("{}{}", mirror, probe_path);
+    let agent = build_agent(&url);
     let start = Instant::now();
-    ureq::get(&url)
-        .timeout(std::time::Duration::from_secs(timeout_secs))
+    agent
+        .get(&url)
+        .timeout(Duration::from_secs(timeout_secs))
         .call()
         .ok()
         .map(|_| start.elapsed().as_secs_f64())
+}
+
+// ureq 2.x does not auto-read *_PROXY env vars, so we read them and pass an
+// explicit `Proxy` to the agent. With a proxy configured, ureq resolves only
+// the proxy host — the target hostname is never passed to getaddrinfo, which
+// matters under proxy-filtered sandboxes (e.g. Claude Code) where direct DNS
+// for arbitrary external hosts is blocked.
+fn build_agent(url: &str) -> ureq::Agent {
+    let mut builder = ureq::AgentBuilder::new();
+    let bypass = host_from_url(url).is_some_and(host_matches_no_proxy);
+    if !bypass {
+        if let Some(proxy) = proxy_from_env() {
+            builder = builder.proxy(proxy);
+        }
+    }
+    builder.build()
+}
+
+fn proxy_from_env() -> Option<ureq::Proxy> {
+    for var in [
+        "ALL_PROXY",
+        "all_proxy",
+        "HTTPS_PROXY",
+        "https_proxy",
+        "HTTP_PROXY",
+        "http_proxy",
+    ] {
+        let Ok(val) = std::env::var(var) else { continue };
+        if val.is_empty() {
+            continue;
+        }
+        if let Ok(p) = ureq::Proxy::new(&val) {
+            return Some(p);
+        }
+        // Parse failed (e.g. socks5h:// not recognized): fall through to next var.
+    }
+    None
+}
+
+fn host_from_url(url: &str) -> Option<&str> {
+    let after_scheme = url.split_once("://")?.1;
+    let host_and_rest = after_scheme.split('/').next()?;
+    // [::1]:80 -> ::1; host:8080 -> host
+    if let Some(rest) = host_and_rest.strip_prefix('[') {
+        let close = rest.find(']')?;
+        Some(&rest[..close])
+    } else {
+        Some(host_and_rest.split(':').next().unwrap_or(host_and_rest))
+    }
+}
+
+fn host_matches_no_proxy(host: &str) -> bool {
+    let np = std::env::var("NO_PROXY")
+        .or_else(|_| std::env::var("no_proxy"))
+        .unwrap_or_default();
+    if np.is_empty() {
+        return false;
+    }
+    np.split(',').any(|raw| {
+        let pat = raw.trim().trim_start_matches("*.").trim_start_matches('.');
+        if pat.is_empty() {
+            return false;
+        }
+        host == pat || host.ends_with(&format!(".{pat}"))
+    })
 }
 
 fn find_best(results: &[(String, Option<f64>)]) -> Option<&str> {
@@ -316,6 +383,42 @@ mod tests {
         assert_eq!(entry_out.probe_path, "/probe");
         assert_eq!(entry_out.version, CACHE_VERSION);
         assert_eq!(entry_out.recorded_at, before);
+    }
+
+    #[test]
+    fn host_from_url_extracts_simple_host() {
+        assert_eq!(host_from_url("http://example.com/path"), Some("example.com"));
+    }
+
+    #[test]
+    fn host_from_url_strips_port() {
+        assert_eq!(host_from_url("http://127.0.0.1:8080/x"), Some("127.0.0.1"));
+    }
+
+    #[test]
+    fn host_from_url_handles_bracketed_ipv6() {
+        assert_eq!(host_from_url("http://[::1]:80/"), Some("::1"));
+    }
+
+    #[test]
+    fn host_from_url_returns_none_without_scheme() {
+        assert_eq!(host_from_url("just-a-string"), None);
+    }
+
+    #[test]
+    fn no_proxy_matcher_exact_and_suffix() {
+        let prev = std::env::var("NO_PROXY").ok();
+        std::env::set_var("NO_PROXY", "127.0.0.1,*.local,example.com");
+        assert!(host_matches_no_proxy("127.0.0.1"));
+        assert!(host_matches_no_proxy("foo.local"));
+        assert!(host_matches_no_proxy("example.com"));
+        assert!(host_matches_no_proxy("a.example.com"));
+        assert!(!host_matches_no_proxy("evil-example.com"));
+        assert!(!host_matches_no_proxy("archive.ubuntu.com"));
+        match prev {
+            Some(v) => std::env::set_var("NO_PROXY", v),
+            None => std::env::remove_var("NO_PROXY"),
+        }
     }
 
     #[test]
