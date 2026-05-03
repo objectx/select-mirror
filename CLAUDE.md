@@ -22,7 +22,11 @@ Single-binary Rust CLI. All logic lives in `src/main.rs`:
 - **`load_cache(path) -> Option<CacheEntry>`** — reads and deserializes the cache; returns `None` on missing file; warns and returns `None` on malformed JSON or unrecognized version
 - **`save_cache(path, entry: &CacheEntry)`** — serializes and writes atomically via `tmp + rename`; write failures print a warning and return without aborting
 - **`secs_to_ms(secs: f64) -> u64`** — converts elapsed seconds to integer milliseconds
-- **`probe(mirror, probe_path, timeout_secs) -> Option<f64>`** — fires a ureq GET, returns elapsed seconds or `None` on failure/timeout
+- **`probe(mirror, probe_path, timeout_secs) -> Option<f64>`** — builds a per-URL `ureq::Agent` via `build_agent`, fires a GET, returns elapsed seconds or `None` on failure/timeout
+- **`build_agent(url) -> ureq::Agent`** — constructs an agent, attaching a `ureq::Proxy` from env unless the URL's host matches `NO_PROXY`
+- **`proxy_from_env() -> Option<ureq::Proxy>`** — reads `ALL_PROXY` / `HTTPS_PROXY` / `HTTP_PROXY` (and lowercase variants) in priority order; falls through on unparseable values
+- **`host_from_url(url) -> Option<&str>`** — extracts the host from a URL, stripping port and bracketed IPv6
+- **`host_matches_no_proxy(host) -> bool`** — exact-match plus dot-suffix match against `NO_PROXY` / `no_proxy`; leading `*.` and `.` on each entry are stripped before matching
 - **`find_best(results: &[(String, Option<f64>)]) -> Option<&str>`** — pure fn; picks mirror with minimum elapsed time, `None` if all failed
 - **`main`** — (1) if cache is valid and cached mirror is in argv, probe it; if elapsed < `--fast-threshold`, print and return; (2) otherwise spawn one `std::thread` per mirror, collect via `mpsc::channel`, print timing to stderr and winner to stdout; (3) write winner to cache; exits 1 if all mirrors fail
 

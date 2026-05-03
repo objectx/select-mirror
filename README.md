@@ -58,6 +58,16 @@ This makes consecutive invocations return the same mirror as long as the network
 
 Use `--no-cache` to force a fresh probe while still updating the cache for the next run.
 
+## Sandboxes and proxies
+
+`select-mirror` honours the standard proxy environment variables. When any of `ALL_PROXY`, `HTTPS_PROXY`, or `HTTP_PROXY` (or their lowercase equivalents) is set, probes are routed through the configured proxy. The first variable that parses as a `ureq` proxy URL wins; unparseable values (for example `socks5h://…`, a scheme `ureq 2.x` does not recognize) are skipped and the next variable is tried.
+
+`NO_PROXY` is honoured with a minimal matcher: each comma-separated entry matches as either an exact hostname or a dot-suffix (`example.com` matches `api.example.com`). Leading `*.` or `.` on an entry is stripped before matching. Loopback entries such as `127.0.0.1`, `::1`, and `*.local` therefore bypass the proxy automatically when listed in `NO_PROXY`.
+
+This makes `select-mirror` work transparently inside network-filtered sandboxes (e.g. Claude Code's `sandbox.enabled: true` mode) where outbound traffic is forced through a local HTTP proxy and direct DNS for arbitrary hosts is blocked. No flags or sandbox-specific configuration are required from the caller — the standard env-var contract is sufficient.
+
+When none of the proxy variables are set, the tool connects directly as before.
+
 ## Build
 
 ```bash
