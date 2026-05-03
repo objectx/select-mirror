@@ -127,6 +127,10 @@ fn parse_fast_count(s: &str) -> Result<usize, String> {
     }
 }
 
+fn secs_to_ms(secs: f64) -> u64 {
+    (secs * 1000.0) as u64
+}
+
 fn main() {
     let args = Args::parse();
 
@@ -134,16 +138,22 @@ fn main() {
     if !args.no_cache {
         if let Some(entry) = load_cache(&args.cache_file) {
             if entry.probe_path == args.probe_path && args.mirrors.contains(&entry.mirror) {
-                if let Some(e) = probe(&entry.mirror, &args.probe_path, args.timeout) {
-                    let threshold_secs = args.fast_threshold as f64 / 1000.0;
-                    if e < threshold_secs {
-                        eprintln!("  {}: {:.3}s (cached)", entry.mirror, e);
-                        save_cache(
-                            &args.cache_file,
-                            &CacheEntry::new(&entry.mirror, (e * 1000.0) as u64, &args.probe_path),
-                        );
-                        println!("{}", entry.mirror);
-                        return;
+                match probe(&entry.mirror, &args.probe_path, args.timeout) {
+                    None => {
+                        eprintln!("  {}: unreachable, re-probing all", entry.mirror);
+                    }
+                    Some(e) => {
+                        let threshold_secs = args.fast_threshold as f64 / 1000.0;
+                        if e < threshold_secs {
+                            eprintln!("  {}: {:.3}s (cached)", entry.mirror, e);
+                            save_cache(
+                                &args.cache_file,
+                                &CacheEntry::new(&entry.mirror, secs_to_ms(e), &args.probe_path),
+                            );
+                            println!("{}", entry.mirror);
+                            return;
+                        }
+                        // slow — fall through to probe-all silently
                     }
                 }
             }
@@ -188,7 +198,7 @@ fn main() {
                 .iter()
                 .find(|(m, _)| m.as_str() == best)
                 .and_then(|(_, e)| *e)
-                .map(|e| (e * 1000.0) as u64)
+                .map(secs_to_ms)
                 .unwrap_or(0);
             save_cache(&args.cache_file, &CacheEntry::new(best, elapsed_ms, &args.probe_path));
             println!("{}", best);
