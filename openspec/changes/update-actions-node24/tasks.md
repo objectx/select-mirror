@@ -12,8 +12,8 @@
 ## 3. Verify the workflow still works
 
 - [x] 3.1 Run `openspec validate update-actions-node24` — must report valid.
-- [ ] 3.2 Trigger a `workflow_dispatch` run on the release workflow and confirm: all three matrix entries succeed, no Node 20 deprecation warning appears, and `actions/upload-artifact@v7` produces the per-target artifact pair.
-- [ ] 3.3 Confirm Dependabot is enabled for the repository in GitHub repo settings (it activates automatically once the config file is committed to the default branch).
+- [x] 3.2 Trigger a `workflow_dispatch` run on the release workflow and confirm: all three matrix entries succeed, no Node 20 deprecation warning appears, and `actions/upload-artifact@v7` produces the per-target artifact pair.
+- [x] 3.3 Confirm Dependabot is enabled for the repository in GitHub repo settings (it activates automatically once the config file is committed to the default branch).
 
 ## 4. Update the spec to match
 
