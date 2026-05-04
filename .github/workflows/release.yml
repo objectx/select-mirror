@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    permissions:
+      contents: write
+    steps:
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "${{ github.ref_name }}" --repo "${{ github.repository }}" --generate-notes
+
+  build:
+    name: Build (${{ matrix.os }}, ${{ matrix.target }})
+    needs: [create-release]
+    # The `skipped` branch is required so this job runs on workflow_dispatch,
+    # where create-release is gated off via its own `if: github.event_name == 'push'`.
+    # Without `success || skipped`, the dispatch path silently no-ops because a
+    # skipped `needs:` propagates as skip to dependents by default.
+    if: always() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped')
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            bin_suffix: ''
+            checksum_cmd: 'shasum -a 256'
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            bin_suffix: ''
+            checksum_cmd: 'sha256sum'
+          - os: windows-2025
+            target: x86_64-pc-windows-msvc
+            bin_suffix: '.exe'
+            checksum_cmd: 'sha256sum'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Add Rust target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Test
+        run: cargo test --release --target ${{ matrix.target }}
+
+      - name: Rename binary
+        run: cp "target/${{ matrix.target }}/release/select-mirror${{ matrix.bin_suffix }}" "select-mirror-${{ matrix.target }}${{ matrix.bin_suffix }}"
+
+      - name: Generate sha256
+        run: ${{ matrix.checksum_cmd }} "select-mirror-${{ matrix.target }}${{ matrix.bin_suffix }}" > "select-mirror-${{ matrix.target }}${{ matrix.bin_suffix }}.sha256"
+
+      - name: Upload to GitHub Release
+        if: github.event_name == 'push'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" "select-mirror-${{ matrix.target }}${{ matrix.bin_suffix }}" "select-mirror-${{ matrix.target }}${{ matrix.bin_suffix }}.sha256" --repo "${{ github.repository }}"
+
+      - name: Upload as workflow artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: select-mirror-${{ matrix.target }}
+          path: |
+            select-mirror-${{ matrix.target }}${{ matrix.bin_suffix }}
+            select-mirror-${{ matrix.target }}${{ matrix.bin_suffix }}.sha256
