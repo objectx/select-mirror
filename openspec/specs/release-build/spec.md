@@ -172,7 +172,7 @@ Each matrix entry's upload step MUST be selected by the trigger event:
   `gh release upload "${{ github.ref_name }}" "<binary>" "<sidecar>" --repo "${{ github.repository }}"`
   using `GITHUB_TOKEN` from `secrets.GITHUB_TOKEN`.
 - `if: github.event_name == 'workflow_dispatch'` → upload via
-  `actions/upload-artifact@v4`, naming the artifact
+  `actions/upload-artifact@v7`, naming the artifact
   `select-mirror-${{ matrix.target }}` and including both files.
 
 Exactly one of these two upload paths MUST run per matrix entry per workflow invocation.

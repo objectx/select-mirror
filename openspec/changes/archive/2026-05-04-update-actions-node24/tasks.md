@@ -17,4 +17,4 @@
 
 ## 4. Update the spec to match
 
-- [ ] 4.1 After the workflow change merges to `main`, run `openspec archive update-actions-node24` to apply the `release-build` spec delta (updates the `actions/upload-artifact` version reference from `@v4` to `@v7`).
+- [x] 4.1 After the workflow change merges to `main`, run `openspec archive update-actions-node24` to apply the `release-build` spec delta (updates the `actions/upload-artifact` version reference from `@v4` to `@v7`).
