@@ -51,7 +51,7 @@ jobs:
             checksum_cmd: 'sha256sum'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Add Rust target
         run: rustup target add ${{ matrix.target }}
@@ -76,7 +76,7 @@ jobs:
 
       - name: Upload as workflow artifact
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: select-mirror-${{ matrix.target }}
           path: |
