@@ -2,12 +2,12 @@
 
 ## Purpose
 
-Enable `select-mirror` to operate transparently inside network-filtered sandboxes (e.g. Claude Code's `sandbox.enabled: true` mode) by honouring the standard `*_PROXY` and `NO_PROXY` environment variables, without introducing new flags or dependencies. `ureq 2.x` — unlike `libcurl` — does not auto-detect these env vars; without an explicit `ureq::Proxy`, ureq attempts a direct connection and fails with `EAI_NONAME` because the sandbox blocks direct DNS for arbitrary external hosts. This capability covers the application-side configuration that bridges that gap.
+Enable `select-mirror` to operate transparently inside network-filtered sandboxes (e.g. Claude Code's `sandbox.enabled: true` mode) by honouring the standard `*_PROXY` and `NO_PROXY` environment variables, without introducing new flags or dependencies. `ureq 3.x` reads these env vars natively via `Proxy::try_from_env()`, so no application-level proxy wiring is required. This capability covers the behavioural contract that must hold regardless of how the underlying HTTP client handles proxy configuration.
 
 ## Requirements
 ### Requirement: Probe honours HTTP-proxy environment variables
 
-When probing a mirror, the system SHALL consult the environment variables `ALL_PROXY`, `all_proxy`, `HTTPS_PROXY`, `https_proxy`, `HTTP_PROXY`, `http_proxy` in that order. The first variable whose value is non-empty AND parses as a `ureq::Proxy` SHALL be configured on the agent used for the probe. With a proxy configured, the probe SHALL NOT cause a local DNS lookup for the target hostname.
+When probing a mirror, the system SHALL consult the environment variables `ALL_PROXY`, `all_proxy`, `HTTPS_PROXY`, `https_proxy`, `HTTP_PROXY`, `http_proxy` in that order. The first variable whose value is non-empty and parseable as a proxy URI SHALL be used for that probe. With a proxy configured, the probe SHALL NOT cause a local DNS lookup for the target hostname.
 
 #### Scenario: HTTP_PROXY is set and the target is external
 
@@ -53,12 +53,12 @@ When `NO_PROXY` (or `no_proxy`) is set, the system SHALL bypass the configured p
 
 ### Requirement: Unparseable proxy values fall through
 
-If a proxy value parses as the unsupported scheme or otherwise fails `ureq::Proxy::new`, the system SHALL silently fall through to the next environment variable in priority order. A parse failure SHALL NOT cause the probe to fail or the program to exit non-zero.
+If a proxy environment variable contains a malformed URI that cannot be parsed, the system SHALL silently fall through to the next environment variable in priority order. A parse failure SHALL NOT cause the probe to fail or the program to exit non-zero.
 
-#### Scenario: ALL_PROXY uses an unsupported scheme
+#### Scenario: ALL_PROXY is malformed
 
-- **WHEN** `ALL_PROXY=socks5h://localhost:1080` is set and `HTTP_PROXY=http://localhost:8888` is also set
-- **THEN** `ALL_PROXY` is rejected by `ureq::Proxy::new` (the `socks5h://` scheme is unrecognized)
+- **WHEN** `ALL_PROXY=not-a-uri` is set and `HTTP_PROXY=http://localhost:8888` is also set
+- **THEN** `ALL_PROXY` fails to parse as a proxy URI
 - **AND** the system falls through and uses `HTTP_PROXY=http://localhost:8888` instead
 
 #### Scenario: Empty proxy value is skipped
