@@ -42,4 +42,4 @@
 - [x] 7.2 Trigger `workflow_dispatch` (after merging to main; GitHub requires the workflow on the default branch to enable dispatch) and confirm: all three matrix entries pass; the run page lists three artifacts (`select-mirror-aarch64-apple-darwin`, `select-mirror-x86_64-unknown-linux-gnu`, `select-mirror-x86_64-pc-windows-msvc`); each artifact contains both a binary and a `.sha256` sidecar.
 - [x] 7.3 Download each artifact locally and run `shasum -c <bin>.sha256` (macOS) or `sha256sum -c <bin>.sha256` (Linux/Windows) to confirm sidecar verification works.
 - [x] 7.4 Confirm no GitHub Release was created by the dispatch run.
-- [ ] 7.5 Push tag `v0.1.0` and verify the GitHub Release is created with auto-generated notes and all six expected files (3 binaries + 3 sidecars).
+- [x] 7.5 Push tag `v0.1.0` and verify the GitHub Release is created with auto-generated notes and all six expected files (3 binaries + 3 sidecars).
