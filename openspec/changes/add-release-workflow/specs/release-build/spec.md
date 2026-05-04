@@ -144,15 +144,17 @@ select-mirror-x86_64-pc-windows-msvc.exe.sha256
 
 Each matrix entry MUST run `${{ matrix.checksum_cmd }} <renamed_binary>` from
 the working directory after rename, redirecting output to
-`<renamed_binary>.sha256`. The sidecar contents MUST be the standard
-two-field format `<lowercase-hex-hash>  <bare-filename>` (two spaces,
-no path prefix), so that `shasum -c <sidecar>` and `sha256sum -c <sidecar>`
+`<renamed_binary>.sha256`. The sidecar contents MUST be a single line in
+the standard sha256sum/shasum output format — a 64-character lowercase hex
+hash followed by the bare binary filename with no path prefix — using
+either text-mode (`<hash>  <name>`) or binary-mode (`<hash> *<name>`)
+representation, so that `shasum -c <sidecar>` and `sha256sum -c <sidecar>`
 both succeed when run from the same directory as the binary.
 
 #### Scenario: Sidecar contains hash and bare filename
 
 - **WHEN** any matrix entry's checksum step completes
-- **THEN** the sidecar file is exactly one line of the form `<64-hex-char hash>  <bare binary filename>` with no leading directory components
+- **THEN** the sidecar file is exactly one line in standard sha256sum format containing a 64-character lowercase hex hash and the bare binary filename with no leading directory components, in either text-mode or binary-mode representation
 
 #### Scenario: Sidecar verifies against its binary
 

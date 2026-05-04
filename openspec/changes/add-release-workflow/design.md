@@ -210,11 +210,13 @@ select-mirror-x86_64-pc-windows-msvc.exe.sha256
 Pattern: `<crate-name>-<target><bin_suffix>` for binaries, append `.sha256`
 for sidecars. Matches the reference convention; scriptable; chmod-and-run.
 
-The `.sha256` files contain `<hash>  <filename>` with no path prefix — the
-checksum step runs from the working directory after rename, so the
-embedded filename is the bare artifact name. This makes
-`sha256sum -c <bin>.sha256` work with the file in the same directory,
-matching user expectations.
+The `.sha256` files contain a single line in standard sha256sum/shasum
+format — `<hash>  <filename>` (text mode) or `<hash> *<filename>` (binary
+mode, default for `sha256sum` on `.exe` under Git Bash) — with no path
+prefix on the filename. The checksum step runs from the working directory
+after rename, so the embedded filename is the bare artifact name. This
+makes `sha256sum -c <bin>.sha256` (or `shasum -c`) work with the file in
+the same directory, matching user expectations.
 
 ### Permissions
 
